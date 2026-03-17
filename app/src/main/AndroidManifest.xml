@@ -41,6 +41,13 @@
             android:label="Dashboard"
             android:theme="@style/Theme.PTODABookingApp" />
 
+        <!-- DriverDashboardActivity after successful driver login -->
+        <activity
+            android:name=".DriverDashboardActivity"
+            android:exported="false"
+            android:label="Driver Dashboard"
+            android:theme="@style/Theme.PTODABookingApp" />
+
         <!-- MainActivity (optional - can keep or remove) -->
         <activity
             android:name=".MainActivity"

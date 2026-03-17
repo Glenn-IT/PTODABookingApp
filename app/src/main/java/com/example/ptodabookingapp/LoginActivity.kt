@@ -13,9 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.ptodabookingapp.api.LoginRequest
+import com.example.ptodabookingapp.models.LoginRequest
+import com.example.ptodabookingapp.models.AuthResponse
 import com.example.ptodabookingapp.api.RetrofitClient
 import com.example.ptodabookingapp.ui.theme.PTODABookingAppTheme
+import com.example.ptodabookingapp.utils.PreferenceManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -24,13 +26,15 @@ class LoginActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        // Initialize PreferenceManager
+        PreferenceManager.init(this)
+        
         setContent {
             PTODABookingAppTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     LoginScreen(
                         modifier = Modifier.padding(innerPadding),
-                        onLoginSuccess = { userName -> navigateToDashboard(userName) },
-                        onNavigateToRegister = { navigateToRegister() },
                         activity = this@LoginActivity
                     )
                 }
@@ -38,31 +42,37 @@ class LoginActivity : ComponentActivity() {
         }
     }
 
-    // Function to handle navigation to Dashboard
-    private fun navigateToDashboard(userName: String) {
-        val intent = Intent(this, DashboardActivity::class.java)
-        intent.putExtra("user_name", userName)
-        startActivity(intent)
-        finish() // Close LoginActivity
+    fun navigateBasedOnUserType(userType: String, isVerified: Boolean) {
+        when {
+            userType == "driver" && isVerified -> {
+                startActivity(Intent(this, DriverDashboardActivity::class.java))
+            }
+            userType == "driver" && !isVerified -> {
+                Toast.makeText(this, "Please verify your account", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(this, DriverDashboardActivity::class.java))
+            }
+            userType == "passenger" -> {
+                startActivity(Intent(this, DashboardActivity::class.java))
+            }
+        }
+        finish()
     }
 
     // Function to handle navigation to Register
-    private fun navigateToRegister() {
+    fun navigateToRegister() {
         val intent = Intent(this, RegisterActivity::class.java)
         startActivity(intent)
-        finish()
     }
 }
 
 @Composable
 fun LoginScreen(
     modifier: Modifier = Modifier,
-    onLoginSuccess: (String) -> Unit,
-    onNavigateToRegister: () -> Unit,
     activity: LoginActivity
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var userType by remember { mutableStateOf("driver") }
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
@@ -77,12 +87,47 @@ fun LoginScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // User Type Selection
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = userType == "driver",
+                    onClick = { userType = "driver" },
+                    enabled = !isLoading
+                )
+                Text("Driver", modifier = Modifier.padding(start = 8.dp))
+            }
+
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = userType == "passenger",
+                    onClick = { userType = "passenger" },
+                    enabled = !isLoading
+                )
+                Text("Passenger", modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Email Input
         TextField(
             value = email,
             onValueChange = { 
                 email = it
-                errorMessage = "" // Clear error when user types
+                errorMessage = ""
             },
             label = { Text("Email") },
             modifier = Modifier.fillMaxWidth(),
@@ -123,15 +168,23 @@ fun LoginScreen(
         // Login Button
         Button(
             onClick = {
-                loginUser(email, password, activity, onLoginSuccess) { error ->
-                    errorMessage = error
+                if (!isLoading) {
+                    isLoading = true
+                    loginUser(email, password, userType, activity) { error ->
+                        isLoading = false
+                        errorMessage = error
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading
         ) {
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
             } else {
                 Text("Login")
             }
@@ -140,7 +193,10 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Navigate to Register
-        TextButton(onClick = { onNavigateToRegister() }, enabled = !isLoading) {
+        TextButton(
+            onClick = { activity.navigateToRegister() },
+            enabled = !isLoading
+        ) {
             Text("Don't have an account? Register")
         }
     }
@@ -150,8 +206,8 @@ fun LoginScreen(
 fun loginUser(
     email: String,
     password: String,
+    userType: String,
     activity: LoginActivity,
-    onSuccess: (String) -> Unit,
     onError: (String) -> Unit
 ) {
     // Validation
@@ -170,31 +226,50 @@ fun loginUser(
         }
     }
 
-    // Create request
-    val request = LoginRequest(email, password)
+    // Create request with user_type
+    val request = LoginRequest(
+        email = email,
+        password = password,
+        user_type = userType
+    )
 
     // Make API call
-    RetrofitClient.instance.loginUser(request).enqueue(object : Callback<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>> {
+    RetrofitClient.instance.login(request).enqueue(object : Callback<AuthResponse> {
         override fun onResponse(
-            call: Call<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>>,
-            response: Response<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>>
+            call: Call<AuthResponse>,
+            response: Response<AuthResponse>
         ) {
-            if (response.isSuccessful && response.body()?.status == "success") {
-                val userName = response.body()?.user?.name ?: "User"
-                Toast.makeText(activity, "Login successful!", Toast.LENGTH_SHORT).show()
-                onSuccess(userName)
+            if (response.isSuccessful) {
+                val authResponse = response.body()
+                if (authResponse != null && authResponse.status == "success") {
+                    // Save token and user data
+                    authResponse.token?.let { PreferenceManager.saveToken(it) }
+                    PreferenceManager.saveUserData(
+                        authResponse.user.id,
+                        authResponse.user.name,
+                        authResponse.user.email,
+                        authResponse.user_type,
+                        authResponse.is_verified
+                    )
+
+                    Toast.makeText(activity, "Login successful!", Toast.LENGTH_SHORT).show()
+                    onError("")
+                    
+                    // Navigate based on user type
+                    activity.navigateBasedOnUserType(authResponse.user_type, authResponse.is_verified)
+                } else {
+                    onError("Login failed. Please try again.")
+                }
             } else {
                 onError("Invalid credentials")
-                Toast.makeText(activity, "Invalid credentials", Toast.LENGTH_SHORT).show()
             }
         }
 
         override fun onFailure(
-            call: Call<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>>,
+            call: Call<AuthResponse>,
             t: Throwable
         ) {
             onError("Network Error: ${t.message}")
-            Toast.makeText(activity, "Network Error: ${t.message}", Toast.LENGTH_SHORT).show()
         }
     })
 }

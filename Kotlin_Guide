@@ -1,0 +1,790 @@
+# Android Integration Guide - Kotlin/Retrofit
+
+## 1. Data Models (Data Classes)
+
+Create a new file: `models/ApiModels.kt`
+
+```kotlin
+package com.example.ptoda.models
+
+import com.google.gson.annotations.SerializedName
+
+// ===== Authentication Models =====
+
+data class RegisterRequest(
+    val name: String,
+    val email: String,
+    val password: String,
+    val user_type: String,  // "driver" or "passenger"
+    val phone: String? = null
+)
+
+data class LoginRequest(
+    val email: String,
+    val password: String,
+    val user_type: String  // "driver" or "passenger"
+)
+
+data class UserData(
+    val id: Long,
+    val name: String,
+    val email: String,
+    @SerializedName("email_verified_at")
+    val emailVerifiedAt: String? = null,
+    @SerializedName("created_at")
+    val createdAt: String? = null
+)
+
+data class AuthResponse(
+    val status: String,
+    val message: String,
+    val user: UserData,
+    val user_type: String,
+    val is_verified: Boolean = false,
+    val token: String? = null
+)
+
+// ===== Driver Models =====
+
+data class DriverInfo(
+    val name: String,
+    val email: String,
+    val phone: String? = null,
+    val license_number: String? = null,
+    val vehicle_type: String? = null,
+    val vehicle_plate: String? = null,
+    val vehicle_model: String? = null,
+    val vehicle_color: String? = null,
+    val is_verified: Boolean = false,
+    val is_active: Boolean = true,
+    val profile_photo: String? = null,
+    val vehicle_image: String? = null
+)
+
+data class DriverDashboardResponse(
+    val status: String,
+    val user: UserData,
+    val driver_info: DriverInfo
+)
+
+data class UpdateProfileRequest(
+    val name: String? = null,
+    val phone: String? = null,
+    val address: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val postal_code: String? = null
+)
+
+data class SubmitVerificationRequest(
+    val license_number: String,
+    val vehicle_type: String,
+    val vehicle_plate: String,
+    val vehicle_model: String,
+    val vehicle_color: String
+)
+
+data class UpdateVehicleRequest(
+    val vehicle_type: String,
+    val vehicle_plate: String,
+    val vehicle_model: String,
+    val vehicle_color: String
+)
+
+data class DriverStatistics(
+    val total_rides: Int,
+    val total_earnings: Double,
+    val rating: Double,
+    val active_rides: Int
+)
+
+// ===== Generic Response =====
+
+data class ApiResponse(
+    val status: String,
+    val message: String? = null,
+    val data: Any? = null
+)
+```
+
+---
+
+## 2. Retrofit API Service
+
+Create a new file: `network/ApiService.kt`
+
+```kotlin
+package com.example.ptoda.network
+
+import com.example.ptoda.models.*
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import retrofit2.Call
+import retrofit2.http.*
+
+interface ApiService {
+
+    // ===== Authentication Endpoints =====
+
+    @POST("register")
+    fun register(@Body request: RegisterRequest): Call<AuthResponse>
+
+    @POST("login")
+    fun login(@Body request: LoginRequest): Call<AuthResponse>
+
+    // ===== Driver Endpoints =====
+
+    @GET("driver/dashboard")
+    fun getDriverDashboard(
+        @Header("Authorization") token: String
+    ): Call<DriverDashboardResponse>
+
+    @POST("driver/update-profile")
+    fun updateDriverProfile(
+        @Header("Authorization") token: String,
+        @Body request: UpdateProfileRequest
+    ): Call<ApiResponse>
+
+    @Multipart
+    @POST("driver/submit-verification")
+    fun submitDriverVerification(
+        @Header("Authorization") token: String,
+        @Part("license_number") licenseNumber: RequestBody,
+        @Part("vehicle_type") vehicleType: RequestBody,
+        @Part("vehicle_plate") vehiclePlate: RequestBody,
+        @Part("vehicle_model") vehicleModel: RequestBody,
+        @Part("vehicle_color") vehicleColor: RequestBody,
+        @Part licenseImage: MultipartBody.Part?,
+        @Part vehicleImage: MultipartBody.Part?
+    ): Call<ApiResponse>
+
+    @Multipart
+    @POST("driver/update-vehicle")
+    fun updateVehicle(
+        @Header("Authorization") token: String,
+        @Part("vehicle_type") vehicleType: RequestBody,
+        @Part("vehicle_plate") vehiclePlate: RequestBody,
+        @Part("vehicle_model") vehicleModel: RequestBody,
+        @Part("vehicle_color") vehicleColor: RequestBody,
+        @Part vehicleImage: MultipartBody.Part?
+    ): Call<ApiResponse>
+
+    @GET("driver/statistics")
+    fun getDriverStatistics(
+        @Header("Authorization") token: String
+    ): Call<ApiResponse>
+
+    // ===== Passenger Endpoints =====
+
+    @GET("passenger/dashboard")
+    fun getPassengerDashboard(
+        @Header("Authorization") token: String
+    ): Call<ApiResponse>
+
+    @POST("passenger/update-profile")
+    fun updatePassengerProfile(
+        @Header("Authorization") token: String,
+        @Body request: UpdateProfileRequest
+    ): Call<ApiResponse>
+}
+```
+
+---
+
+## 3. Retrofit Client Setup
+
+Create a new file: `network/RetrofitClient.kt`
+
+```kotlin
+package com.example.ptoda.network
+
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
+
+object RetrofitClient {
+
+    private const val BASE_URL = "http://192.168.x.x:8000/api/" // Update with your IP
+
+    private fun getOkHttpClient(): OkHttpClient {
+        val loggingInterceptor = HttpLoggingInterceptor()
+        loggingInterceptor.level = HttpLoggingInterceptor.Level.BODY
+
+        return OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    fun getApiService(): ApiService {
+        return Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(getOkHttpClient())
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+    }
+}
+```
+
+---
+
+## 4. Shared Preferences for Token Management
+
+Create a new file: `utils/PreferenceManager.kt`
+
+```kotlin
+package com.example.ptoda.utils
+
+import android.content.Context
+import android.content.SharedPreferences
+
+object PreferenceManager {
+
+    private const val PREF_NAME = "ptoda_prefs"
+    private const val KEY_TOKEN = "auth_token"
+    private const val KEY_USER_ID = "user_id"
+    private const val KEY_USER_NAME = "user_name"
+    private const val KEY_USER_EMAIL = "user_email"
+    private const val KEY_USER_TYPE = "user_type"
+    private const val KEY_IS_VERIFIED = "is_verified"
+
+    private lateinit var preferences: SharedPreferences
+
+    fun init(context: Context) {
+        preferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    }
+
+    // ===== Token Management =====
+
+    fun saveToken(token: String) {
+        preferences.edit().putString(KEY_TOKEN, "Bearer $token").apply()
+    }
+
+    fun getToken(): String? = preferences.getString(KEY_TOKEN, null)
+
+    fun clearToken() {
+        preferences.edit().remove(KEY_TOKEN).apply()
+    }
+
+    // ===== User Data Management =====
+
+    fun saveUserData(userId: Long, name: String, email: String, userType: String, isVerified: Boolean) {
+        preferences.edit().apply {
+            putLong(KEY_USER_ID, userId)
+            putString(KEY_USER_NAME, name)
+            putString(KEY_USER_EMAIL, email)
+            putString(KEY_USER_TYPE, userType)
+            putBoolean(KEY_IS_VERIFIED, isVerified)
+            apply()
+        }
+    }
+
+    fun getUserId(): Long = preferences.getLong(KEY_USER_ID, -1)
+    fun getUserName(): String? = preferences.getString(KEY_USER_NAME, null)
+    fun getUserEmail(): String? = preferences.getString(KEY_USER_EMAIL, null)
+    fun getUserType(): String? = preferences.getString(KEY_USER_TYPE, null)
+    fun isVerified(): Boolean = preferences.getBoolean(KEY_IS_VERIFIED, false)
+
+    // ===== Clear All Data =====
+
+    fun clearAll() {
+        preferences.edit().clear().apply()
+    }
+
+    fun isLoggedIn(): Boolean = getToken() != null
+}
+```
+
+---
+
+## 5. Login Activity Implementation
+
+```kotlin
+package com.example.ptoda.ui.auth
+
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.RadioGroup
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.example.ptoda.R
+import com.example.ptoda.models.LoginRequest
+import com.example.ptoda.network.RetrofitClient
+import com.example.ptoda.ui.driver.DriverDashboardActivity
+import com.example.ptoda.ui.driver.DriverVerificationActivity
+import com.example.ptoda.ui.passenger.PassengerDashboardActivity
+import com.example.ptoda.utils.PreferenceManager
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+
+class LoginActivity : AppCompatActivity() {
+
+    private lateinit var emailEditText: EditText
+    private lateinit var passwordEditText: EditText
+    private lateinit var userTypeRadioGroup: RadioGroup
+    private lateinit var loginButton: Button
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_login)
+
+        // Initialize views
+        emailEditText = findViewById(R.id.email_input)
+        passwordEditText = findViewById(R.id.password_input)
+        userTypeRadioGroup = findViewById(R.id.user_type_radio_group)
+        loginButton = findViewById(R.id.login_button)
+
+        // Set default to Driver
+        userTypeRadioGroup.check(R.id.radio_driver)
+
+        loginButton.setOnClickListener {
+            performLogin()
+        }
+    }
+
+    private fun performLogin() {
+        val email = emailEditText.text.toString().trim()
+        val password = passwordEditText.text.toString().trim()
+
+        // Validate input
+        if (email.isEmpty() || password.isEmpty()) {
+            Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Get selected user type
+        val userType = when (userTypeRadioGroup.checkedRadioButtonId) {
+            R.id.radio_driver -> "driver"
+            R.id.radio_passenger -> "passenger"
+            else -> return
+        }
+
+        // Create request
+        val loginRequest = LoginRequest(
+            email = email,
+            password = password,
+            user_type = userType
+        )
+
+        // Show loading state
+        loginButton.isEnabled = false
+        loginButton.text = "Logging in..."
+
+        // Make API call
+        val apiService = RetrofitClient.getApiService()
+        apiService.login(loginRequest).enqueue(object : Callback<com.example.ptoda.models.AuthResponse> {
+            override fun onResponse(
+                call: Call<com.example.ptoda.models.AuthResponse>,
+                response: Response<com.example.ptoda.models.AuthResponse>
+            ) {
+                loginButton.isEnabled = true
+                loginButton.text = "Login"
+
+                if (response.isSuccessful) {
+                    val authResponse = response.body()
+                    if (authResponse != null && authResponse.status == "success") {
+
+                        // Save auth data
+                        authResponse.token?.let { PreferenceManager.saveToken(it) }
+                        PreferenceManager.saveUserData(
+                            authResponse.user.id,
+                            authResponse.user.name,
+                            authResponse.user.email,
+                            authResponse.user_type,
+                            authResponse.is_verified
+                        )
+
+                        Toast.makeText(this@LoginActivity, "Login successful", Toast.LENGTH_SHORT).show()
+
+                        // Navigate based on user type and verification status
+                        when {
+                            authResponse.user_type == "driver" && !authResponse.is_verified -> {
+                                // Unverified driver - show verification activity
+                                startActivity(Intent(this@LoginActivity, DriverVerificationActivity::class.java))
+                            }
+                            authResponse.user_type == "driver" -> {
+                                // Verified driver - show dashboard
+                                startActivity(Intent(this@LoginActivity, DriverDashboardActivity::class.java))
+                            }
+                            authResponse.user_type == "passenger" -> {
+                                // Passenger - show passenger dashboard
+                                startActivity(Intent(this@LoginActivity, PassengerDashboardActivity::class.java))
+                            }
+                        }
+
+                        finish()
+                    }
+                } else {
+                    val errorBody = response.errorBody()?.string()
+                    Toast.makeText(
+                        this@LoginActivity,
+                        "Login failed: $errorBody",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+
+            override fun onFailure(call: Call<com.example.ptoda.models.AuthResponse>, t: Throwable) {
+                loginButton.isEnabled = true
+                loginButton.text = "Login"
+                Toast.makeText(
+                    this@LoginActivity,
+                    "Error: ${t.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        })
+    }
+}
+```
+
+---
+
+## 6. Driver Dashboard Activity
+
+```kotlin
+package com.example.ptoda.ui.driver
+
+import android.os.Bundle
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.example.ptoda.R
+import com.example.ptoda.models.DriverDashboardResponse
+import com.example.ptoda.network.RetrofitClient
+import com.example.ptoda.utils.PreferenceManager
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+
+class DriverDashboardActivity : AppCompatActivity() {
+
+    private lateinit var nameTextView: TextView
+    private lateinit var emailTextView: TextView
+    private lateinit var phoneTextView: TextView
+    private lateinit var vehicleTypeTextView: TextView
+    private lateinit var vehiclePlateTextView: TextView
+    private lateinit var vehicleImageView: ImageView
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_driver_dashboard)
+
+        // Initialize views
+        nameTextView = findViewById(R.id.driver_name)
+        emailTextView = findViewById(R.id.driver_email)
+        phoneTextView = findViewById(R.id.driver_phone)
+        vehicleTypeTextView = findViewById(R.id.vehicle_type)
+        vehiclePlateTextView = findViewById(R.id.vehicle_plate)
+        vehicleImageView = findViewById(R.id.vehicle_image)
+
+        // Load dashboard data
+        loadDashboard()
+    }
+
+    private fun loadDashboard() {
+        val token = PreferenceManager.getToken() ?: return
+
+        val apiService = RetrofitClient.getApiService()
+        apiService.getDriverDashboard(token).enqueue(object : Callback<DriverDashboardResponse> {
+            override fun onResponse(
+                call: Call<DriverDashboardResponse>,
+                response: Response<DriverDashboardResponse>
+            ) {
+                if (response.isSuccessful) {
+                    val dashboardResponse = response.body()
+                    if (dashboardResponse != null) {
+                        displayDriverInfo(dashboardResponse)
+                    }
+                } else {
+                    Toast.makeText(
+                        this@DriverDashboardActivity,
+                        "Failed to load dashboard",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            override fun onFailure(call: Call<DriverDashboardResponse>, t: Throwable) {
+                Toast.makeText(
+                    this@DriverDashboardActivity,
+                    "Error: ${t.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        })
+    }
+
+    private fun displayDriverInfo(response: DriverDashboardResponse) {
+        val driverInfo = response.driver_info
+
+        nameTextView.text = "Name: ${driverInfo.name}"
+        emailTextView.text = "Email: ${driverInfo.email}"
+        phoneTextView.text = "Phone: ${driverInfo.phone ?: "N/A"}"
+        vehicleTypeTextView.text = "Vehicle: ${driverInfo.vehicle_type ?: "Not set"}"
+        vehiclePlateTextView.text = "Plate: ${driverInfo.vehicle_plate ?: "Not set"}"
+
+        // Load vehicle image if available
+        if (!driverInfo.vehicle_image.isNullOrEmpty()) {
+            // Use Glide or Picasso to load image
+            // Glide.with(this).load(driverInfo.vehicle_image).into(vehicleImageView)
+        }
+    }
+}
+```
+
+---
+
+## 7. Driver Verification Activity
+
+```kotlin
+package com.example.ptoda.ui.driver
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.ptoda.R
+import com.example.ptoda.network.RetrofitClient
+import com.example.ptoda.utils.PreferenceManager
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import java.io.File
+
+class DriverVerificationActivity : AppCompatActivity() {
+
+    private lateinit var licenseNumberEditText: EditText
+    private lateinit var vehicleTypeEditText: EditText
+    private lateinit var vehiclePlateEditText: EditText
+    private lateinit var vehicleModelEditText: EditText
+    private lateinit var vehicleColorEditText: EditText
+    private lateinit var licenseImageView: ImageView
+    private lateinit var vehicleImageView: ImageView
+    private lateinit var submitButton: Button
+
+    private var licenseImageUri: Uri? = null
+    private var vehicleImageUri: Uri? = null
+
+    private val licenseImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            licenseImageUri = uri
+            licenseImageView.setImageURI(uri)
+        }
+    }
+
+    private val vehicleImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            vehicleImageUri = uri
+            vehicleImageView.setImageURI(uri)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_driver_verification)
+
+        // Initialize views
+        licenseNumberEditText = findViewById(R.id.license_number)
+        vehicleTypeEditText = findViewById(R.id.vehicle_type)
+        vehiclePlateEditText = findViewById(R.id.vehicle_plate)
+        vehicleModelEditText = findViewById(R.id.vehicle_model)
+        vehicleColorEditText = findViewById(R.id.vehicle_color)
+        licenseImageView = findViewById(R.id.license_image)
+        vehicleImageView = findViewById(R.id.vehicle_image)
+        submitButton = findViewById(R.id.submit_button)
+
+        licenseImageView.setOnClickListener {
+            licenseImageLauncher.launch("image/*")
+        }
+
+        vehicleImageView.setOnClickListener {
+            vehicleImageLauncher.launch("image/*")
+        }
+
+        submitButton.setOnClickListener {
+            submitVerification()
+        }
+    }
+
+    private fun submitVerification() {
+        val licenseNumber = licenseNumberEditText.text.toString().trim()
+        val vehicleType = vehicleTypeEditText.text.toString().trim()
+        val vehiclePlate = vehiclePlateEditText.text.toString().trim()
+        val vehicleModel = vehicleModelEditText.text.toString().trim()
+        val vehicleColor = vehicleColorEditText.text.toString().trim()
+
+        // Validate input
+        if (licenseNumber.isEmpty() || vehicleType.isEmpty() || vehiclePlate.isEmpty() ||
+            vehicleModel.isEmpty() || vehicleColor.isEmpty()) {
+            Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val token = PreferenceManager.getToken() ?: return
+        submitButton.isEnabled = false
+        submitButton.text = "Submitting..."
+
+        // Prepare multipart request
+        val licenseNumberBody = licenseNumber.toRequestBody("text/plain".toMediaTypeOrNull())
+        val vehicleTypeBody = vehicleType.toRequestBody("text/plain".toMediaTypeOrNull())
+        val vehiclePlateBody = vehiclePlate.toRequestBody("text/plain".toMediaTypeOrNull())
+        val vehicleModelBody = vehicleModel.toRequestBody("text/plain".toMediaTypeOrNull())
+        val vehicleColorBody = vehicleColor.toRequestBody("text/plain".toMediaTypeOrNull())
+
+        // Prepare image files
+        var licenseImagePart: MultipartBody.Part? = null
+        licenseImageUri?.let { uri ->
+            val file = File(getRealPathFromUri(uri))
+            licenseImagePart = MultipartBody.Part.createFormData(
+                "license_image",
+                file.name,
+                file.asRequestBody("image/*".toMediaTypeOrNull())
+            )
+        }
+
+        var vehicleImagePart: MultipartBody.Part? = null
+        vehicleImageUri?.let { uri ->
+            val file = File(getRealPathFromUri(uri))
+            vehicleImagePart = MultipartBody.Part.createFormData(
+                "vehicle_image",
+                file.name,
+                file.asRequestBody("image/*".toMediaTypeOrNull())
+            )
+        }
+
+        // Make API call
+        val apiService = RetrofitClient.getApiService()
+        apiService.submitDriverVerification(
+            token,
+            licenseNumberBody,
+            vehicleTypeBody,
+            vehiclePlateBody,
+            vehicleModelBody,
+            vehicleColorBody,
+            licenseImagePart,
+            vehicleImagePart
+        ).enqueue(object : Callback<com.example.ptoda.models.ApiResponse> {
+            override fun onResponse(
+                call: Call<com.example.ptoda.models.ApiResponse>,
+                response: Response<com.example.ptoda.models.ApiResponse>
+            ) {
+                submitButton.isEnabled = true
+                submitButton.text = "Submit"
+
+                if (response.isSuccessful) {
+                    Toast.makeText(this@DriverVerificationActivity, "Documents submitted successfully", Toast.LENGTH_SHORT).show()
+                    startActivity(Intent(this@DriverVerificationActivity, DriverDashboardActivity::class.java))
+                    finish()
+                } else {
+                    Toast.makeText(this@DriverVerificationActivity, "Submission failed", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onFailure(call: Call<com.example.ptoda.models.ApiResponse>, t: Throwable) {
+                submitButton.isEnabled = true
+                submitButton.text = "Submit"
+                Toast.makeText(this@DriverVerificationActivity, "Error: ${t.message}", Toast.LENGTH_LONG).show()
+            }
+        })
+    }
+
+    private fun getRealPathFromUri(uri: Uri): String {
+        // Simple implementation - adjust based on your needs
+        return uri.path ?: ""
+    }
+}
+```
+
+---
+
+## 8. Usage in MainActivity
+
+```kotlin
+package com.example.ptoda
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import com.example.ptoda.ui.auth.LoginActivity
+import com.example.ptoda.ui.driver.DriverDashboardActivity
+import com.example.ptoda.ui.passenger.PassengerDashboardActivity
+import com.example.ptoda.utils.PreferenceManager
+
+class MainActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Initialize PreferenceManager
+        PreferenceManager.init(this)
+
+        // Check if user is already logged in
+        if (PreferenceManager.isLoggedIn()) {
+            // Redirect to appropriate dashboard
+            when (PreferenceManager.getUserType()) {
+                "driver" -> {
+                    startActivity(Intent(this, DriverDashboardActivity::class.java))
+                }
+                "passenger" -> {
+                    startActivity(Intent(this, PassengerDashboardActivity::class.java))
+                }
+            }
+        } else {
+            // Redirect to login
+            startActivity(Intent(this, LoginActivity::class.java))
+        }
+
+        finish()
+    }
+}
+```
+
+---
+
+## 9. Dependencies in build.gradle
+
+```gradle
+dependencies {
+    // Retrofit
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+
+    // OkHttp
+    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.11.0'
+
+    // Gson
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Image Loading (Optional but recommended)
+    implementation 'com.github.bumptech.glide:glide:4.15.1'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.15.1'
+}
+```
+
+---
+
+This Kotlin guide provides a complete implementation for your Android app to work with the Laravel API. Adjust UI layouts and styling as needed for your design!

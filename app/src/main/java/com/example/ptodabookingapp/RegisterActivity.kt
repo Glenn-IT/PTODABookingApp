@@ -13,9 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.ptodabookingapp.api.RegisterRequest
+import com.example.ptodabookingapp.models.RegisterRequest
+import com.example.ptodabookingapp.models.AuthResponse
 import com.example.ptodabookingapp.api.RetrofitClient
 import com.example.ptodabookingapp.ui.theme.PTODABookingAppTheme
+import com.example.ptodabookingapp.utils.PreferenceManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -24,12 +26,15 @@ class RegisterActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        // Initialize PreferenceManager
+        PreferenceManager.init(this)
+        
         setContent {
             PTODABookingAppTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     RegisterScreen(
                         modifier = Modifier.padding(innerPadding),
-                        onNavigateToLogin = { navigateToLogin() },
                         activity = this@RegisterActivity
                     )
                 }
@@ -38,23 +43,23 @@ class RegisterActivity : ComponentActivity() {
     }
 
     // Function to handle navigation to Login
-    private fun navigateToLogin() {
+    fun navigateToLogin() {
         val intent = Intent(this, LoginActivity::class.java)
         startActivity(intent)
-        finish() // Close RegisterActivity
+        finish()
     }
 }
 
 @Composable
 fun RegisterScreen(
     modifier: Modifier = Modifier,
-    onNavigateToLogin: () -> Unit,
     activity: RegisterActivity
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var userType by remember { mutableStateOf("driver") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
@@ -129,6 +134,41 @@ fun RegisterScreen(
             enabled = !isLoading
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // User Type Selection
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = userType == "driver",
+                    onClick = { userType = "driver" },
+                    enabled = !isLoading
+                )
+                Text("Driver", modifier = Modifier.padding(start = 8.dp))
+            }
+
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = userType == "passenger",
+                    onClick = { userType = "passenger" },
+                    enabled = !isLoading
+                )
+                Text("Passenger", modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
 
         // Error Message Display
@@ -146,15 +186,23 @@ fun RegisterScreen(
         // Register Button
         Button(
             onClick = {
-                registerUser(name, email, password, confirmPassword, activity, onNavigateToLogin) { error ->
-                    errorMessage = error
+                if (!isLoading) {
+                    isLoading = true
+                    registerUser(name, email, password, confirmPassword, userType, activity) { error ->
+                        isLoading = false
+                        errorMessage = error
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading
         ) {
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
             } else {
                 Text("Register")
             }
@@ -163,7 +211,10 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Navigate to Login
-        TextButton(onClick = { onNavigateToLogin() }, enabled = !isLoading) {
+        TextButton(
+            onClick = { activity.navigateToLogin() },
+            enabled = !isLoading
+        ) {
             Text("Already have an account? Login")
         }
     }
@@ -175,8 +226,8 @@ fun registerUser(
     email: String,
     password: String,
     confirmPassword: String,
+    userType: String,
     activity: RegisterActivity,
-    onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
     // Validation
@@ -211,31 +262,40 @@ fun registerUser(
         }
     }
 
-    // Create request
-    val request = RegisterRequest(name, email, password)
+    // Create request with user_type
+    val request = RegisterRequest(
+        name = name,
+        email = email,
+        password = password,
+        user_type = userType
+    )
 
     // Make API call
-    RetrofitClient.instance.registerUser(request).enqueue(object : Callback<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>> {
+    RetrofitClient.instance.register(request).enqueue(object : Callback<AuthResponse> {
         override fun onResponse(
-            call: Call<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>>,
-            response: Response<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>>
+            call: Call<AuthResponse>,
+            response: Response<AuthResponse>
         ) {
-            if (response.isSuccessful && response.body()?.status == "success") {
-                Toast.makeText(activity, "Registered successfully! Please login.", Toast.LENGTH_SHORT).show()
-                onSuccess()
+            if (response.isSuccessful) {
+                val authResponse = response.body()
+                if (authResponse != null && authResponse.status == "success") {
+                    Toast.makeText(activity, "Registered successfully! Please login.", Toast.LENGTH_SHORT).show()
+                    onError("")
+                    activity.navigateToLogin()
+                } else {
+                    val errorMsg = authResponse?.message ?: "Registration failed"
+                    onError(errorMsg)
+                }
             } else {
-                val errorMsg = response.body()?.message ?: "Registration failed"
-                onError(errorMsg)
-                Toast.makeText(activity, "Error: $errorMsg", Toast.LENGTH_SHORT).show()
+                onError("Registration failed. Please try again.")
             }
         }
 
         override fun onFailure(
-            call: Call<com.example.ptodabookingapp.api.ApiResponse<com.example.ptodabookingapp.api.User>>,
+            call: Call<AuthResponse>,
             t: Throwable
         ) {
             onError("Network Error: ${t.message}")
-            Toast.makeText(activity, "Network Error: ${t.message}", Toast.LENGTH_SHORT).show()
         }
     })
 }
