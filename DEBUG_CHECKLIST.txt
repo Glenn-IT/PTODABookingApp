@@ -1,0 +1,287 @@
+CHECKLIST FOR ANDROID APP + LARAVEL API CONNECTION
+=====================================================
+
+Your Setup:
+- Frontend: Android Studio (Kotlin) - Phone IP: 192.168.1.17
+- Backend: Laravel API - PC IP: 192.168.56.1
+- Database: MySQL
+- Server: XAMPP
+
+====================================
+SECTION 1: XAMPP & LARAVEL SETUP
+====================================
+
+☐ STEP 1: Start XAMPP
+  1. Open XAMPP Control Panel
+  2. Click "Start" on Apache (should turn green)
+  3. Click "Start" on MySQL (should turn green)
+  4. Wait for both to fully start (watch the Process ID column)
+
+☐ STEP 2: Verify Laravel is running
+  1. Open Command Prompt / PowerShell
+  2. Navigate to your Laravel project folder:
+     cd C:\path\to\your\laravel\project
+  3. Start Laravel development server:
+     php artisan serve --host=0.0.0.0 --port=8000
+
+     ⚠️ IMPORTANT: Must use 0.0.0.0 (not localhost)
+     This allows phone to connect from other network!
+
+  4. You should see:
+     "Laravel development server started:"
+     "http://0.0.0.0:8000"
+
+☐ STEP 3: Test Laravel API from your PC browser
+  1. Open browser on your PC
+  2. Go to: http://192.168.56.1:8000
+  3. Should see Laravel welcome page or your API response
+
+  If NOT working:
+  - ✗ Check if php artisan serve command failed
+  - ✗ Try different port: php artisan serve --port=9000
+  - ✗ Check firewall is allowing port 8000
+
+====================================
+SECTION 2: WINDOWS FIREWALL CHECK
+====================================
+
+☐ STEP 1: Allow Port 8000 in Firewall
+  1. Press Windows key + type "Windows Defender Firewall"
+  2. Click "Windows Defender Firewall with Advanced Security"
+  3. Click "Inbound Rules" (left panel)
+  4. Right-click → "New Rule"
+  5. Select "Port" → Next
+  6. Select "TCP"
+  7. Enter Port: 8000 → Next
+  8. Select "Allow the connection" → Next
+  9. Check all boxes (Domain, Private, Public) → Next
+  10. Name: "Laravel Development" → Finish
+
+☐ STEP 2: Verify Port 8000 is open
+  Open PowerShell and run:
+  netstat -ano | findstr :8000
+
+  Should show:
+  LISTENING  [your-process-id]
+
+  If nothing shows = Laravel not running!
+
+====================================
+SECTION 3: NETWORK & IP VERIFICATION
+====================================
+
+☐ STEP 1: Verify your PC IP (192.168.56.1)
+  1. Open PowerShell
+  2. Run: ipconfig
+  3. Look for "IPv4 Address: 192.168.56.1"
+  4. If different, UPDATE RetrofitClient.kt with actual IP!
+
+☐ STEP 2: Test from your Phone browser
+  1. Make sure phone is on SAME WiFi as PC
+  2. Open browser on phone
+  3. Go to: http://192.168.56.1:8000
+
+  Result should be:
+  ✅ Shows Laravel page = Network working!
+  ❌ Timeout/Can't reach = Network issue!
+
+☐ STEP 3: If phone can't reach PC on browser:
+  - Check WiFi connection
+  - Ping from phone:
+    • Use "Ping" app from Play Store
+    • Ping 192.168.56.1
+    Should get replies!
+  - If no reply = Network issue, not app issue
+
+====================================
+SECTION 4: LARAVEL API ENDPOINTS
+====================================
+
+☐ STEP 1: Create/Verify Login endpoint
+  Location: routes/api.php
+
+  Should have:
+  Route::post('login', [AuthController::class, 'login']);
+
+  Test with browser/Postman:
+  POST http://192.168.56.1:8000/api/login
+  Body: {"email":"test@test.com","password":"12345"}
+
+☐ STEP 2: Create/Verify Register endpoint
+  Location: routes/api.php
+
+  Should have:
+  Route::post('register', [AuthController::class, 'register']);
+
+  Test with Postman:
+  POST http://192.168.56.1:8000/api/register
+  Body: {"name":"John","email":"john@test.com","password":"12345"}
+
+☐ STEP 3: Test with Postman
+  1. Download Postman (postman.com)
+  2. Create POST request to:
+     http://192.168.56.1:8000/api/login
+  3. Go to "Body" tab → select "raw" → "JSON"
+  4. Enter:
+     {
+       "email": "test@test.com",
+       "password": "12345"
+     }
+  5. Click "Send"
+
+  Expected Response:
+  {
+    "status": "success",
+    "user": {
+      "id": 1,
+      "name": "Test User",
+      "email": "test@test.com"
+    }
+  }
+
+  If you get error = API code issue, fix endpoints
+
+====================================
+SECTION 5: ANDROID APP VERIFICATION
+====================================
+
+☐ STEP 1: Verify RetrofitClient.kt has correct IP
+  File: app/src/main/java/com/example/ptodabookingapp/api/RetrofitClient.kt
+
+  Should have:
+  private const val BASE_URL = "http://192.168.56.1:8000/api/"
+
+  ✅ If different = CHANGE IT!
+
+☐ STEP 2: Verify network_security_config.xml
+  File: app/src/main/res/xml/network_security_config.xml
+
+  Should include both:
+  <domain includeSubdomains="true">192.168.56.1</domain>
+  <domain includeSubdomains="true">192.168.1.17</domain>
+
+☐ STEP 3: Verify AndroidManifest.xml has permissions
+  File: app/src/main/AndroidManifest.xml
+
+  Should have BEFORE <application>:
+  <uses-permission android:name="android.permission.INTERNET" />
+
+  <application> tag should have:
+  android:networkSecurityConfig="@xml/network_security_config"
+
+☐ STEP 4: Rebuild & Reinstall
+  1. Android Studio → Build → Clean Project
+  2. Build → Rebuild Project
+  3. On phone: Uninstall old app (long press → Uninstall)
+  4. Run app from Android Studio (Run → Run 'app')
+  5. Wait for installation to complete
+
+====================================
+SECTION 6: TESTING THE CONNECTION
+====================================
+
+☐ TEST 1: Check if app can reach server
+  1. Open app on phone
+  2. Look at logcat in Android Studio:
+     View → Tool Windows → Logcat
+  3. Try to register/login
+  4. Check logs for:
+     ✅ "onResponse()" = Server responded!
+     ❌ "onFailure()" = Connection failed!
+
+☐ TEST 2: See what error message you get
+  In Android Studio Logcat, look for:
+
+  "Network Error: ..." = Network issue
+  "Invalid credentials" = API working but wrong email/pass
+  "Timeout" = Server not responding
+  "UnknownHostException" = Can't find 192.168.56.1
+
+☐ TEST 3: Monitor Laravel terminal
+  1. Watch the Laravel terminal where you ran:
+     php artisan serve
+  2. When you try login from app, you should see:
+     POST /api/login 200
+     POST /api/register 200
+
+  If you DON'T see requests = phone can't reach server!
+  If you DO see requests = server is working!
+
+====================================
+SECTION 7: COMMON ISSUES & FIXES
+====================================
+
+ISSUE: "Network Error: ... after 10000ms"
+FIX:
+  ☐ Make sure Laravel is running (php artisan serve)
+  ☐ Check IP in RetrofitClient.kt matches your PC IP
+  ☐ Try from phone browser first: http://192.168.56.1:8000
+  ☐ Check firewall allows port 8000
+  ☐ Check both are on same WiFi
+
+ISSUE: "UnknownHostException"
+FIX:
+  ☐ Wrong IP in RetrofitClient.kt
+  ☐ Check your actual PC IP: ipconfig
+  ☐ Update if different from 192.168.56.1
+
+ISSUE: "Invalid credentials"
+FIX:
+  ☐ API is working! ✅
+  ☐ But email/password is wrong
+  ☐ Check MySQL has test user:
+    SELECT * FROM users;
+  ☐ Or create a test user first
+
+ISSUE: "Cannot create resource" or database errors
+FIX:
+  ☐ MySQL not running in XAMPP
+  ☐ Laravel migrations not run:
+    php artisan migrate
+  ☐ .env file not set up correctly
+
+====================================
+QUICK TEST CHECKLIST (DO THIS FIRST)
+====================================
+
+Do these 5 things in order:
+
+1. ☐ Start XAMPP (Apache + MySQL green)
+2. ☐ Run: php artisan serve --host=0.0.0.0 --port=8000
+3. ☐ Open browser: http://192.168.56.1:8000
+   Should see Laravel page!
+4. ☐ Phone browser: http://192.168.56.1:8000
+   Should see same page!
+5. ☐ Test API with Postman:
+   POST http://192.168.56.1:8000/api/login
+   Should get response!
+
+If all 5 pass = Problem is in app code (not network/setup)
+If any fail = Follow SECTION 1-7 above to fix
+
+====================================
+NEED HELP? ANSWER THESE QUESTIONS:
+====================================
+
+When you test, tell me:
+
+Q1: Can you see Laravel page on your PC browser?
+    http://192.168.56.1:8000
+    YES / NO / TIMEOUT
+
+Q2: Can you see Laravel page on your phone browser?
+    http://192.168.56.1:8000
+    YES / NO / TIMEOUT
+
+Q3: Can you login in Postman?
+    POST http://192.168.56.1:8000/api/login
+    WORKS / ERROR (what error?)
+
+Q4: What error do you see in app?
+    (Screenshot of Toast message or logcat)
+
+Q5: What do you see in Laravel terminal?
+    (Any requests logged?)
+
+====================================
+
